@@ -34,6 +34,9 @@
 #include <optimizer/planner.h>
 
 
+// to log query_id
+#include <utils/backend_status.h>
+
 /*
  * We won't use PostgreSQL regexps,
  * and as they redefine some system regexps types, we make sure we don't
@@ -50,10 +53,6 @@ PG_MODULE_MAGIC;
 
 #ifndef PG_SYSLOG_LIMIT
 #define PG_SYSLOG_LIMIT 1024
-#endif
-
-#ifndef LOCAL_DEBUG
-#define LOCAL_DEBUG 1
 #endif
 
 /*---- Local variables ----*/
@@ -1211,7 +1210,9 @@ static bool pgluq_check_log()
 #endif
 	
 	/* Didn't find any interesting condition */
+	elog(NOTICE, "nothing found");
 	return ret;
+#endif
 }
 
 
