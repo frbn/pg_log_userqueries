@@ -1210,9 +1210,7 @@ static bool pgluq_check_log()
 #endif
 	
 	/* Didn't find any interesting condition */
-	elog(NOTICE, "nothing found");
 	return ret;
-#endif
 }
 
 
