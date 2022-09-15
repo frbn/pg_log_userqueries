@@ -24,6 +24,9 @@
 
 #include <storage/proc.h>
 
+#include <errno.h>
+#include <math.h>
+
 /*
  * We won't use PostgreSQL regexps,
  * and as they redefine some system regexps types, we make sure we don't
@@ -166,6 +169,10 @@ extern int pg_mbcliplen(const char *mbstr, int len, int limit);
 static bool pgluq_checkitem(const char *item,
 				const char *log_wl, regex_t *regex_wl,
 				const char *log_bl, regex_t *regex_bl);
+
+float pgluq_get_io_pressure(void);
+
+
 /*
  * Module load callback
  */
@@ -1303,3 +1310,48 @@ static bool check_switchoff(void)
 
 	return switch_off;
 }
+
+
+float  pgluq_get_io_pressure(void) {
+
+	const char *psi = "/proc/pressure/io";
+	const char *avg10 = "avg10=";
+
+   char comm[10]; //not sure if wee might need more space
+ 	char* ptr = NULL;
+	char* delim_equal = "=";
+
+	// we will return this float
+	float ret = 0.00;
+
+	FILE *f = fopen(psi, "r");
+	if ( f == NULL) {
+		elog(ERROR, "Can't open %s ", psi);
+	}
+
+	while(! feof(f)) {
+		fscanf(f, "%s",comm);  	
+
+		ptr = strstr(comm,avg10);
+		if (ptr != NULL){
+			//avg10= found
+
+			// searching first token <with delim "="
+			ptr = strtok(comm,delim_equal);
+			if ( ptr != NULL ){
+				// now searching for next token delim with = 
+				ptr = strtok(NULL,delim_equal);
+				if (ptr != NULL ){
+					ret = atof(ptr);
+					return ret;
+				}
+			}
+			fclose(f) ;
+		}
+	}
+	fclose(f);
+	return ret;
+}
+
+
+

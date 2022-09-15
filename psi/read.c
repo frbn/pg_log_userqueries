@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <math.h>
+
 
 
 float  get_io_pressure(void) ;
@@ -12,7 +14,8 @@ float  get_io_pressure(void) ;
 void main(int argc, char **argv) {
 
  float ret = get_io_pressure();
- printf("io pressure: avg10=%f\n", ret);
+ ret = roundf(ret);
+ printf("io pressure: avg10=%.2f\n", ret);
  exit(errno);
 	
 }
@@ -25,7 +28,7 @@ float  get_io_pressure(void) {
 	const char *psi = "/proc/pressure/io";
 	const char *avg10 = "avg10=";
 
-   char comm[1000];
+   char comm[10];
  	char* ptr = NULL;
 	char* delim_equal = "=";
 	char* delim_space = " ";
