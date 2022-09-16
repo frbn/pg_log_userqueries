@@ -22,6 +22,7 @@
 #include <utils/timestamp.h>
 #include <access/xact.h>
 
+/* /proc/pressure */
 #include <storage/proc.h>
 #include <errno.h>
 #include <math.h>
@@ -94,6 +95,9 @@ static char *  log_user = NULL;
 static char *  log_user_blacklist = NULL;
 static char *  log_query_id = NULL;
 static char *  log_query_id_blacklist = NULL;
+static char *  log_on_io_pressure = NULL;
+long unsigned first_io_pressure = 0;
+long unsigned second_io_pressure = 0;
 static char *  log_db = NULL;
 static char *  log_db_blacklist = NULL;
 static char *  log_addr = NULL;
@@ -141,6 +145,7 @@ void		_PG_init(void);
 void		_PG_fini(void);
 
 static void pgluq_ExecutorEnd(QueryDesc *queryDesc);
+
 #if PG_VERSION_NUM >= 140000
 static void pgluq_ProcessUtility(PlannedStmt *pstmt,
       const char *queryString,
@@ -183,7 +188,6 @@ extern int pg_mbcliplen(const char *mbstr, int len, int limit);
 static bool pgluq_checkitem(const char *item,
 				const char *log_wl, regex_t *regex_wl,
 				const char *log_bl, regex_t *regex_bl);
-float pgluq_get_io_pressure(void);
 
 static bool pgluq_checkBLitem(const char *item,
 				const char *log_bl, regex_t *regex_bl);
@@ -191,6 +195,7 @@ static bool pgluq_checkBLitem(const char *item,
 static bool pgluq_checkWLitem(const char *item,
 				const char *log_wl, regex_t *regex_wl);
 				
+static long pgluq_get_io_pressure(void);
 
 /*
  * Module load callback
@@ -213,7 +218,19 @@ _PG_init(void)
  	 * Define (or redefine) custom GUC variables.
 	 */
 
- 
+	 DefineCustomStringVariable( "pg_log_userqueries.log_on_io_pressure",
+				 "Log statement according to a given io pressure.",
+				 NULL,
+				 &log_on_io_pressure,
+				 "pg_log_userqueries",
+				 PGC_POSTMASTER,
+				 0,
+	#if PG_VERSION_NUM >= 90100
+				 NULL,
+	#endif
+				 NULL,
+				 NULL );
+				 
 	DefineCustomStringVariable( "pg_log_userqueries.log_query_id",
 				"Log statement according to the given query_id.",
 				NULL,
@@ -1015,6 +1032,7 @@ static bool pgluq_check_log()
 	    (log_app == NULL) && (log_addr_blacklist == NULL) &&
 	    (log_query == NULL) &&(log_query_blacklist == NULL) &&
 	    (log_query_id == NULL) &&(log_query_id_blacklist == NULL) &&
+		(log_on_io_pressure == NULL) &&
 	    superuser())
 		return true;
 
@@ -1047,6 +1065,11 @@ static bool pgluq_check_log()
 			return false;
 	}
 #endif
+
+	/* Check io pressure */
+	if (log_on_io_pressure != NULL){
+		elog(WARNING, "io pressure=%lu", pgluq_get_io_pressure());		
+	}
 
 	/* Check the user name */
 	if (log_user != NULL || log_user_blacklist != NULL) {
@@ -1483,42 +1506,40 @@ static bool check_switchoff(void)
 	return switch_off;
 }
 
-
-float  pgluq_get_io_pressure(void) {
+static long  pgluq_get_io_pressure(void) {
 
 	const char *psi = "/proc/pressure/io";
-	const char *avg10 = "avg10=";
+	const char *field = "total=";
 
    char comm[10]; //not sure if wee might need more space
  	char* ptr = NULL;
 	char* delim_equal = "=";
 
 	// we will return this float
-	float ret = 0.00;
+	long ret = 0L;
 
 	FILE *f = fopen(psi, "r");
 	if ( f == NULL) {
 		elog(ERROR, "Can't open %s ", psi);
-	}
+	}else{
+		while(! feof(f)) {
+			fscanf(f, "%s",comm);  	
 
-	while(! feof(f)) {
-		fscanf(f, "%s",comm);  	
+			ptr = strstr(comm,field);
+			if (ptr != NULL){
+				//avg10= found
 
-		ptr = strstr(comm,avg10);
-		if (ptr != NULL){
-			//avg10= found
-
-			// searching first token <with delim "="
-			ptr = strtok(comm,delim_equal);
-			if ( ptr != NULL ){
-				// now searching for next token delim with = 
-				ptr = strtok(NULL,delim_equal);
-				if (ptr != NULL ){
-					ret = atof(ptr);
-					return ret;
+				// searching first token <with delim "="
+				ptr = strtok(comm,delim_equal);
+				if ( ptr != NULL ){
+					// now searching for next token delim with = 
+					ptr = strtok(NULL,delim_equal);
+					if (ptr != NULL ){
+						ret = atof(ptr);
+						return ret;
+					}
 				}
 			}
-			fclose(f) ;
 		}
 	}
 	fclose(f);

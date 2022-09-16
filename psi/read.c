@@ -15,7 +15,8 @@ void main(int argc, char **argv) {
 
  float ret = get_io_pressure();
  ret = roundf(ret);
- printf("io pressure: avg10=%.2f\n", ret);
+ //printf("io pressure: avg10=%.2f\n", ret);
+ printf("io pressure: total=%i\n", ret);
  exit(errno);
 	
 }
@@ -26,12 +27,12 @@ void main(int argc, char **argv) {
 float  get_io_pressure(void) {
 
 	const char *psi = "/proc/pressure/io";
-	const char *avg10 = "avg10=";
+	const char *field = "avg10=";
+	//const char *field = "total=";
 
    char comm[10];
  	char* ptr = NULL;
 	char* delim_equal = "=";
-	char* delim_space = " ";
 
 	float ret = 0.00;
 
@@ -43,17 +44,22 @@ float  get_io_pressure(void) {
 
 	while(! feof(f)) {
 		fscanf(f, "%s",comm);  	
+		ptr = strstr(comm,field);
 
-		ptr = strstr(comm,avg10);
 		if (ptr != NULL){
-			//avg10= found
+			//field found
+			printf("field found: %s\n", ptr); 
 
 			// searching first token <with delim "="
 			ptr = strtok(comm,delim_equal);
 			if ( ptr != NULL ){
+				printf("token found: %s\n", ptr); 
+
 				// now searching for next token delim with = 
 				ptr = strtok(NULL,delim_equal);
 				if (ptr != NULL ){
+					printf("token found: %s\n", ptr); 
+				// now searching for next token delim with = 
 					ret = atof(ptr);
 					return ret;
 				}
