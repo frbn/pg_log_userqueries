@@ -30,6 +30,10 @@
 // to log query_id
 #include <utils/backend_status.h>
 
+// planner hook
+#include <optimizer/planner.h>
+
+
 /*
  * We won't use PostgreSQL regexps,
  * and as they redefine some system regexps types, we make sure we don't
@@ -133,6 +137,9 @@ static bool    match_all = false;
 static bool    enable_log_duration = false;
 
 /* Saved hook values in case of unload */
+
+static planner_hook_type prev_PlannerHook  = NULL;
+
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 #if PG_VERSION_NUM >= 90000
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
@@ -145,6 +152,7 @@ void		_PG_init(void);
 void		_PG_fini(void);
 
 static void pgluq_ExecutorEnd(QueryDesc *queryDesc);
+static PlannedStmt* pgluq_PlannerHook(Query *parse, const char *query_st, int cursorOptions, ParamListInfo boundp);
 
 #if PG_VERSION_NUM >= 140000
 static void pgluq_ProcessUtility(PlannedStmt *pstmt,
@@ -698,12 +706,19 @@ _PG_init(void)
 	/*
 	 * Install hooks.
 	 */
+	
 	prev_ExecutorEnd = ExecutorEnd_hook;
 	ExecutorEnd_hook = pgluq_ExecutorEnd;
+	
 #if PG_VERSION_NUM >= 90000
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = pgluq_ProcessUtility;
 #endif
+	
+	if (planner_hook != pgluq_PlannerHook ){
+		prev_PlannerHook = planner_hook;
+		planner_hook = pgluq_PlannerHook;
+	}
 }
 
 /*
@@ -721,6 +736,8 @@ _PG_fini(void)
 
 	/* Uninstall hooks. */
 	ExecutorEnd_hook = prev_ExecutorEnd;
+	planner_hook = prev_PlannerHook;
+
 #if PG_VERSION_NUM >= 90000
 	ProcessUtility_hook = prev_ProcessUtility;
 #endif
@@ -773,6 +790,36 @@ pgluq_ExecutorEnd(QueryDesc *queryDesc)
 	else
 		standard_ExecutorEnd(queryDesc);
 }
+
+/* 
+ * PlannerHook : read the pressure before the executor
+ */
+static PlannedStmt * pgluq_PlannerHook(Query *parse, const char *query_st, int cursorOptions, ParamListInfo boundp){
+	
+	PlannedStmt *result;
+	
+	/* read the pressure and store it to compare */
+	first_io_pressure = pgluq_get_io_pressure();
+	elog(WARNING, "first io pressure=%lu", first_io_pressure);		
+	
+	/*
+     * Call next hook if it exists
+     */
+    if (prev_PlannerHook)
+    {
+      result = prev_PlannerHook(parse, query_st, cursorOptions, boundp);
+    }
+    else
+    {
+      result = standard_planner(parse, query_st, cursorOptions, boundp);
+    }
+
+    return result;
+
+}
+
+
+
 
 /*
  * ProcessUtility hook
@@ -1068,7 +1115,9 @@ static bool pgluq_check_log()
 
 	/* Check io pressure */
 	if (log_on_io_pressure != NULL){
-		elog(WARNING, "io pressure=%lu", pgluq_get_io_pressure());		
+		second_io_pressure = pgluq_get_io_pressure();
+		elog(WARNING, "second io pressure=%lu", second_io_pressure);
+		elog(WARNING, "Pressure: %lu", second_io_pressure-first_io_pressure);		
 	}
 
 	/* Check the user name */
@@ -1545,6 +1594,4 @@ static long  pgluq_get_io_pressure(void) {
 	fclose(f);
 	return ret;
 }
-
-
 
