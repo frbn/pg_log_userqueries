@@ -1117,6 +1117,7 @@ static bool pgluq_check_log()
 		second_io_pressure = pgluq_get_io_pressure();
 		elog(WARNING, "second io pressure=%lu", second_io_pressure);
 		elog(WARNING, "Pressure: %lu", second_io_pressure-first_io_pressure);		
+		elog(WARNING, "query_id: %s", query_id);		
 	}
 
 	/* Check the user name */
